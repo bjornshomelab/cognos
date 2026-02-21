@@ -49,6 +49,27 @@ def _call_llm(system: str, prompt: str) -> Optional[str]:
     return None
 
 
+def _fallback_synthesize_reason(question: str, majority_choice: str, minority_choice: str, 
+                                majority_alt: str, minority_alt: str, confidence: float) -> dict:
+    """Graceful fallback when LLM is unavailable."""
+    return {
+        'question': question,
+        'majority_choice': majority_choice,
+        'minority_choice': minority_choice,
+        'majority_assumption': f'Majoriteten ({majority_choice}) föredrar: {majority_alt}',
+        'minority_assumption': f'Minoriteten ({minority_choice}) föredrar: {minority_alt}',
+        'divergence_source': 'Okänd — LLM ej tillgänglig',
+        'divergence_type': 'unknown',
+        'divergence_axes': [],
+        'integration_strategy': 'Kunde inte analysera (LLM ej tillgänglig)',
+        'integration_mode': 'clarification',
+        'meta_question': 'Kunde inte generera metafråga',
+        'meta_alternatives': [],
+        'confidence': confidence,
+        'is_resolvable': False,
+    }
+
+
 def synthesize_reason(
     question: str,
     alternatives: list[str],
@@ -112,7 +133,7 @@ def synthesize_reason(
     majority_alt = choice_to_alt.get(majority_choice, f"Alternative {majority_choice}")
     minority_alt = choice_to_alt.get(minority_choice, f"Alternative {minority_choice}") if minority_choice else None
 
-    # Skapa prompt för LLM att extrahera antaganden
+    # Skapa prompt för LLM att extrahera antaganden + strukturera divergensen
     prompt = f"""
 Du är en filosofisk analytiker som specialiserar sig på underliggande antaganden i diskoord.
 
@@ -127,46 +148,49 @@ Röstfördelning:
 
 Din uppgift:
 1. Identifiera det OLIKA ANTAGANDET som driver divergensen.
-   Inte: "A gillar X, B gillar Y"
-   Utan: "A antar att Z är viktig, B antar att W är viktig"
-
-2. Ange DIVERGENSENS KÄLLA — vilken axel skiljer de två?
-
-3. Föreslå INTEGRATIONSSTRATEGI — hur kan båda antaganden vara sann samtidigt?
-
-4. Formulera META-FRÅGA — vad behöver vi klargöra för att lösa detta?
+2. Klassificera divergenstypen: epistemic (vad är sant), normative (vad bör göras), scope (vilket område), eller cost_of_error (ej ett utan annat är farligare)
+3. Föreslå integrationsstrategi: reframe (ändra perspektiv), tradeoff (acceptera båda), empirical_test (testa empiriskt), eller clarification (klargör begrepp)
+4. Generera 3 konkreta nästa steg baserat på integration_mode
 
 Svar i JSON-format (bara JSON, inget annat):
 {{
   "majority_assumption": "Majoriteten antar att...",
   "minority_assumption": "Minoriteten antar att...",
   "divergence_source": "Divergensen kommer från antagandet om [X]",
-  "integration_strategy": "Båda kan vara sanna om vi förstår att...",
-  "meta_question": "Vi bör klargöra: ...",
-  "is_resolvable": true eller false
+  "divergence_type": "epistemic",
+  "divergence_axes": [
+    {{
+      "dimension": "Namn på axel",
+      "majority_position": 0.8,
+      "minority_position": 0.2,
+      "interpretation": "Vad denna axel betyder"
+    }}
+  ],
+  "integration_strategy": "Konkret actionable strategi (inte bara narrativ)",
+  "integration_mode": "clarification",
+  "meta_question": "Nästa fråga vi bör ställa",
+  "meta_alternatives": [
+    "Alternativ 1: konkret nästa steg",
+    "Alternativ 2: konkret nästa steg",
+    "Alternativ 3: konkret nästa steg"
+  ],
+  "is_resolvable": true
 }}
 """
 
-    system = "Du är en filosofisk analytiker. Svara ENBART med giltigt JSON, inget annat."
+    system = "Du är en filosofisk analytiker. Svara ENBART med giltigt JSON, inget annat. Fokus: operativ struktur, inte bara narrativ."
 
     # Use injected llm_fn, fallback to _call_llm
     llm_to_use = llm_fn if llm_fn else _call_llm
+    if not llm_to_use:
+        # Emergency fallback if no LLM available at all
+        return _fallback_synthesize_reason(question, majority_choice, minority_choice, majority_alt, minority_alt, confidence)
+    
     response_text = llm_to_use(system, prompt)
 
     if not response_text:
         # Fallback om LLM inte tillgänglig
-        return {
-            'question': question,
-            'majority_choice': majority_choice,
-            'majority_assumption': f'Majoriteten ({majority_count}) föredrar {majority_choice}',
-            'minority_choice': minority_choice,
-            'minority_assumption': f'Minoriteten ({minority_count}) föredrar {minority_choice}',
-            'divergence_source': 'Okänd — LLM ej tillgänglig',
-            'integration_strategy': 'Kunde inte analysera',
-            'meta_question': 'Kunde inte generera metafråga',
-            'confidence': confidence,
-            'is_resolvable': False,
-        }
+        return _fallback_synthesize_reason(question, majority_choice, minority_choice, majority_alt, minority_alt, confidence)
 
     # Parsa JSON från response
     try:
@@ -179,15 +203,20 @@ Svar i JSON-format (bara JSON, inget annat):
     except (json.JSONDecodeError, ValueError):
         data = {}
 
+    # Return rich structured output
     return {
         'question': question,
         'majority_choice': majority_choice,
-        'majority_assumption': data.get('majority_assumption', f'Majoriteten föredrar {majority_choice}'),
         'minority_choice': minority_choice,
+        'majority_assumption': data.get('majority_assumption', f'Majoriteten föredrar {majority_choice}'),
         'minority_assumption': data.get('minority_assumption', f'Minoriteten föredrar {minority_choice}'),
         'divergence_source': data.get('divergence_source', 'Okänd'),
+        'divergence_type': data.get('divergence_type', 'epistemic'),  # NEW: categorization
+        'divergence_axes': data.get('divergence_axes', []),  # NEW: geometric structure
         'integration_strategy': data.get('integration_strategy', 'Kunde inte analysera'),
+        'integration_mode': data.get('integration_mode', 'clarification'),  # NEW: categorization
         'meta_question': data.get('meta_question', 'Ingen metafråga genererad'),
+        'meta_alternatives': data.get('meta_alternatives', []),  # NEW: dynamic alternatives
         'confidence': confidence,
         'is_resolvable': data.get('is_resolvable', True),
     }

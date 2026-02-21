@@ -357,8 +357,8 @@ RATIONALE: <max 20 words>"""
                     )
                     assumption_history.append(divergence['analysis']['core_tension'])
                 else:
-                    # Fallback to weak synthesis
-                    divergence_weak = synthesize_reason(
+                    # Fallback to weak synthesis (now returns rich structure)
+                    divergence = synthesize_reason(
                         question=current_question,
                         alternatives=clean_curr_alts,
                         vote_distribution=vote_result['votes'],
@@ -367,49 +367,21 @@ RATIONALE: <max 20 words>"""
                         context=context,
                         llm_fn=self.llm_fn,
                     )
-                    # Wrap weak result in strong format for consistency
-                    divergence = {
-                        'question': current_question,
-                        'analysis': {
-                            'majority_assumption': divergence_weak['majority_assumption'],
-                            'minority_assumption': divergence_weak['minority_assumption'],
-                            'common_ground': divergence_weak.get('divergence_source', 'Unknown'),
-                            'core_tension': divergence_weak.get('divergence_source', 'Unknown'),
-                            'divergence_axes': [],
-                        },
-                        'integration': {
-                            'primary_strategy': divergence_weak['integration_strategy'],
-                            'strategy_details': [],
-                            'remaining_uncertainty': 'Unknown',
-                            'resource_requirement': 'Unknown',
-                            'estimated_effort': 'medium',
-                        },
-                        'meta_alternatives': {
-                            'meta_question': divergence_weak.get('meta_question'),
-                            'alternatives': [],
-                            'recommended_next_step': 'Continue with meta-question',
-                        },
-                        'epistemic_gain': {
-                            'confidence_gain': 0.0,
-                            'overall_epistemic_gain': 0.0,
-                            'interpretation': 'Fallback to weak synthesis',
-                        },
-                    }
                 
                 layer_dict['divergence'] = divergence
                 
-                # Extract assumptions from strong format
-                maj_assumption = divergence['analysis']['majority_assumption'] if isinstance(divergence, dict) and 'analysis' in divergence else str(divergence)
-                min_assumption = divergence['analysis']['minority_assumption'] if isinstance(divergence, dict) and 'analysis' in divergence else str(divergence)
+                # Log key information from divergence (both strong and weak format)
+                self._log(f"  Majority: {divergence.get('majority_assumption', 'Unknown')[:50]}...")
+                self._log(f"  Minority: {divergence.get('minority_assumption', 'Unknown')[:50]}...")
+                self._log(f"  Type: {divergence.get('divergence_type', 'unknown')} | Mode: {divergence.get('integration_mode', 'unknown')}")
                 
-                self._log(f"  Majority: {maj_assumption[:60]}...")
-                self._log(f"  Minority: {min_assumption[:60]}...")
+                if divergence.get('divergence_axes'):
+                    self._log(f"  Geometry: {len(divergence['divergence_axes'])} dimensions")
                 
-                if isinstance(divergence, dict) and 'analysis' in divergence:
-                    self._log(f"  Core tension: {divergence['analysis']['core_tension'][:60]}...")
-                    if divergence.get('epistemic_gain'):
-                        gain = divergence['epistemic_gain']['overall_epistemic_gain']
-                        self._log(f"  Epistemic gain: {gain:.3f} ({divergence['epistemic_gain']['interpretation'][:40]}...)")
+                if divergence.get('meta_alternatives'):
+                    self._log(f"  Next steps: {len(divergence['meta_alternatives'])} options")
+                    self._log(f"    → {divergence['meta_alternatives'][0][:50]}..." if divergence['meta_alternatives'] else "")
+                    assumption_history.append(divergence.get('divergence_source', 'unknown'))
                 
                 # Layer 3: Convergence check
                 if len(confidence_history) >= 2:
