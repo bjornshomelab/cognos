@@ -222,9 +222,101 @@ Svar i JSON-format (bara JSON, inget annat):
     }
 
 
+def enhanced_frame_check(question: str, llm_fn: Optional[Any] = None) -> dict:
+    """
+    ENHANCED frame checking with structured detection of:
+    1. Ill-posed questions (lacking well-defined solution space)
+    2. Category errors (applying concepts to wrong domain)
+    3. Underspecified questions (missing necessary parameters)
+    
+    Returns: {
+        'original_question': str,
+        'is_well_framed': bool,
+        'problem_type': str,  # 'ok' | 'ill_posed' | 'category_error' | 'underspecified' | 'ambiguous'
+        'reframed_question': Optional[str],
+        'specific_issues': list[str],  # What specifically is wrong?
+        'missing_specifications': list[str],  # What needs to be specified?
+        'recommendation': str,
+    }
+    """
+    
+    prompt = f"""Analyze this question for epistemological soundness.
+
+Question: {question}
+
+Check for THREE types of problems:
+
+1. ILL-POSED: Does the question have a well-defined solution space?
+   - Are all terms operationally defined?
+   - Is the question answerable in principle?
+   - Does it assume false presuppositions?
+
+2. CATEGORY ERROR: Is a concept applied to the wrong domain?
+   - Are mental concepts applied to physical things (or vice versa)?
+   - Are abstract properties treated as concrete entities?
+   - Are different logical types confused?
+
+3. UNDERSPECIFIED: Does the question lack necessary parameters?
+   - Is the scope undefined? (e.g., "always" vs "sometimes")
+   - Is the context missing? (e.g., "better" — but better for what?)
+   - Are comparison baselines unclear?
+   - Are threshold criteria unspecified?
+
+Return JSON:
+{{
+  "is_well_framed": true/false,
+  "problem_type": "ok" | "ill_posed" | "category_error" | "underspecified" | "ambiguous",
+  "reframed_question": "Improved version or null",
+  "specific_issues": ["Issue 1", "Issue 2", ...],
+  "missing_specifications": ["What needs to be specified"],
+  "recommendation": "What to do next"
+}}
+
+Return ONLY valid JSON.
+"""
+    
+    system = "You are an epistemologist specializing in question analysis."
+    
+    llm_to_use = llm_fn if llm_fn else _call_llm
+    response_text = llm_to_use(system, prompt)
+    
+    if not response_text:
+        return {
+            'original_question': question,
+            'is_well_framed': True,
+            'problem_type': 'ok',
+            'reframed_question': None,
+            'specific_issues': [],
+            'missing_specifications': [],
+            'recommendation': 'Kunde inte analysera (LLM ej tillgänglig)',
+        }
+    
+    try:
+        import re
+        json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+        if json_match:
+            data = json.loads(json_match.group())
+        else:
+            data = {}
+    except (json.JSONDecodeError, ValueError):
+        data = {}
+    
+    return {
+        'original_question': question,
+        'is_well_framed': data.get('is_well_framed', True),
+        'problem_type': data.get('problem_type', 'ok'),
+        'reframed_question': data.get('reframed_question'),
+        'specific_issues': data.get('specific_issues', []),
+        'missing_specifications': data.get('missing_specifications', []),
+        'recommendation': data.get('recommendation', 'Ingen analys tillgänglig'),
+    }
+
+
 def frame_transform(question: str, confidence: float = 0.0, llm_fn: Optional[Any] = None) -> dict:
     """
     Meta-nivå 2: Detektera om frågan själv är felställd.
+    
+    LEGACY FUNCTION — now delegates to enhanced_frame_check() for backward compatibility.
 
     Returnerar:
       {
@@ -235,7 +327,22 @@ def frame_transform(question: str, confidence: float = 0.0, llm_fn: Optional[Any
         'recommendation': str,
       }
     """
+    
+    # Delegate to enhanced version and simplify output for backward compatibility
+    enhanced = enhanced_frame_check(question, llm_fn)
+    
+    return {
+        'original_question': enhanced['original_question'],
+        'is_well_framed': enhanced['is_well_framed'],
+        'reframed_question': enhanced.get('reframed_question'),
+        'problem_type': enhanced.get('problem_type', 'ok'),
+        'recommendation': enhanced.get('recommendation', 'Ingen analys tillgänglig'),
+    }
 
+
+def _legacy_frame_transform_prompt(question: str, llm_fn: Optional[Any] = None) -> Optional[str]:
+    """LEGACY: Original frame_transform prompt (kept for reference)."""
+    
     prompt = f"""
 Fråga: {question}
 
