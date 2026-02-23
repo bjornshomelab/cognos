@@ -173,6 +173,37 @@ Three layers are required:
 
 > *An LLM with access to context does not guarantee context-grounded responses — it requires a verification layer to detect when the model defaults to statistical best practice despite available context.*
 
+### Insight 9: mHC som klassisk kvant-gate-analog — och CognOS mätpunkten
+
+**Datum:** 2026-02-23
+**Källa:** Observation av Björn Wikström vid genomläsning av arXiv:2512.24880v2
+
+mHC:s residualmapping H_i^res är en **dubbelt stokastisk matris** (Birkhoff-polytopen). Birkhoff-von Neumann-teoremet säger att dessa är konvexa kombinationer av permutationsmatriser. Permutationsmatriser är de *klassiska* analogerna till kvanttransformationer (unitära matriser).
+
+Strukturellt är mHC därmed en **klassisk kvant-gate-arkitektur**:
+
+```text
+[kvant-gate]   = unitär matris på qubitar i superposition
+[mHC H_i^res]  = dubbelt stokastisk matris på n parallella strömmar
+```
+
+Samma topologi. Klassisk sannolikhet istället för kvantamplitud.
+
+**Implikationen för CognOS:**
+
+I kvantdatorer kollapsar mätning superpositionstillståndet. I mHC kollapsar H_i^post de n strömmarna tillbaka till ett enda layer-output. Det fönster som existerar *precis före* H_i^post-kollaps är CognOS naturliga mätpunkt — osäkerheten är maximal och geometriskt separerbar i detta fönster.
+
+```text
+[ström 1]  ─┐
+[ström 2]   ├─ [H_i^post kollaps] → x_{l+1}
+[ström 3]   │       ↑
+[ström 4]  ─┘   CognOS mäter här
+```
+
+**Varför detta är nytt:** Nuvarande CognOS mäter post-hoc på output. mHC öppnar ett pre-kollaps-fönster — ett strukturellt analogt med kvantobestämdhet precis före mätning. Det är en arkitektoniskt inbyggd epistemisk signal, inte en approximation.
+
+**Koppling till HYPOTHESIS 2:** Se `HYPOTHESIS.md` — Signal 1–3 operationaliserar detta fönster.
+
 ### Insight 8: CognOS is What is Missing in Agentic AI
 
 Everyone builds agents. No one has solved that agents do not know when they are guessing.
